@@ -16,3 +16,4 @@ ignorePorts = false
 [[ports]]
 localPort = 4000
 externalPort = 80
+exposeLocalhost = true

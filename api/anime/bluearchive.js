@@ -1,4 +1,3 @@
-// blue-archive.js
 const axios = require('axios');
 
 const meta = {
@@ -7,22 +6,18 @@ const meta = {
     category: 'Anime',
 };
 
-async function onStart({ req, res }) {
+async function onStart({ request, reply }) {
     try {
         const { data } = await axios.get(
             'https://raw.githubusercontent.com/rynxzyy/blue-archive-r-img/refs/heads/main/links.json'
         );
-        // pick a random URL from the array
         const imageUrl = data[Math.floor(Math.random() * data.length)];
         const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
         const imgBuffer = Buffer.from(response.data);
-        res.writeHead(200, {
-            'Content-Type': 'image/png',
-            'Content-Length': imgBuffer.length,
-        });
-        res.end(imgBuffer);
+        reply.header('Content-Type', 'image/png');
+        return reply.send(imgBuffer);
     } catch (error) {
-        res.status(500).json({ status: false, error: error.message });
+        return reply.status(500).send({ status: false, error: error.message });
     }
 }
 

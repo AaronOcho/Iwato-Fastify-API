@@ -1,11 +1,10 @@
-const express = require('express');
+const fastify = require('fastify')({ logger: false });
 const fs = require('fs');
 const path = require('path');
 const set = require('./settings');
 const chalk = require('chalk');
 
 (async () => {
-  const app = express();
   const PORT = process.env.PORT || 4000;
 
   const logger = {
@@ -16,37 +15,40 @@ const chalk = require('chalk');
     event: (message) => console.log(chalk.dim.cyan('•') + chalk.dim(' event - ') + message),
   };
 
-  app.set('trust proxy', true);
-  app.set('json spaces', 2);
-
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: false }));
-  app.use('/', express.static(path.join(__dirname, 'docs')));
+  fastify.register(require('@fastify/formbody'));
+  fastify.register(require('@fastify/static'), {
+    root: path.join(__dirname, 'docs'),
+    prefix: '/',
+  });
 
   logger.info('Starting server initialization...');
 
-  app.use((req, res, next) => {
-    const originalJson = res.json;
-    res.json = function (data) {
+  fastify.addHook('onSend', async (request, reply, payload) => {
+    if (reply.getHeader('Content-Type')?.includes('application/json')) {
+      let data;
+      try {
+        data = JSON.parse(payload);
+      } catch {
+        return payload;
+      }
       if (data && typeof data === 'object') {
-        const statusCode = res.statusCode || 200;
-        const responseData = {
+        const statusCode = reply.statusCode || 200;
+        data = {
           status: data.status,
           statusCode,
           creator: (set.author || '').toLowerCase(),
           ...data,
         };
-        return originalJson.call(this, responseData);
+        return JSON.stringify(data);
       }
-      return originalJson.call(this, data);
-    };
-    next();
+    }
+    return payload;
   });
 
   String.prototype.capitalize = function () {
     return this.charAt(0).toUpperCase() + this.slice(1);
   };
-  
+
   function loadEndpointsFromDirectory(directory, baseRoute = '') {
     let endpoints = [];
     const fullPath = path.join(__dirname, directory);
@@ -73,13 +75,8 @@ const chalk = require('chalk');
             const name = item.replace('.js', '');
             const route = `${baseRoute}/${name}`;
 
-            // wrap express handler
-            app.all(route, async (req, res, next) => {
-              try {
-                await mod.onStart({ req, res });
-              } catch (err) {
-                next(err);
-              }
+            fastify.all(route, async (request, reply) => {
+              await mod.onStart({ request, reply });
             });
 
             let displayPath = route;
@@ -113,8 +110,8 @@ const chalk = require('chalk');
     return endpoints;
   }
 
-  app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'docs', 'index.html'));
+  fastify.get('/', (request, reply) => {
+    reply.sendFile('index.html', path.join(__dirname, 'docs'));
   });
 
   logger.info('Loading API endpoints...');
@@ -123,26 +120,27 @@ const chalk = require('chalk');
     `Loaded ${allEndpoints.reduce((t, c) => t + c.items.length, 0)} endpoints`
   );
 
-  app.get('/endpoints', (req, res) => {
+  fastify.get('/endpoints', (request, reply) => {
     const total = allEndpoints.reduce((t, c) => t + c.items.length, 0);
-    res.json({ status: true, count: total, endpoints: allEndpoints });
+    reply.send({ status: true, count: total, endpoints: allEndpoints });
   });
 
-  app.get('/set', (req, res) => {
-    res.json({ status: true, ...set });
+  fastify.get('/set', (request, reply) => {
+    reply.send({ status: true, ...set });
   });
 
-  app.use((req, res) => {
-    logger.info(`404: ${req.method} ${req.path}`);
-    res.status(404).sendFile(path.join(__dirname, 'docs', 'err', '404.html'));
+  fastify.setNotFoundHandler((request, reply) => {
+    logger.info(`404: ${request.method} ${request.url}`);
+    reply.status(404).sendFile('err/404.html', path.join(__dirname, 'docs'));
   });
 
-  app.use((err, req, res, next) => {
-    logger.error(`500: ${err.message}`);
-    res.status(500).sendFile(path.join(__dirname, 'docs', 'err', '500.html'));
+  fastify.setErrorHandler((error, request, reply) => {
+    logger.error(`500: ${error.message}`);
+    reply.status(500).sendFile('err/500.html', path.join(__dirname, 'docs'));
   });
 
-  app.listen(PORT, () => {
+  try {
+    await fastify.listen({ port: PORT });
     logger.ready(`Server started successfully`);
     logger.info(`Local:   ${chalk.cyan(`http://localhost:${PORT}`)}`);
 
@@ -163,7 +161,10 @@ const chalk = require('chalk');
     }
 
     logger.info(`${chalk.dim('Ready for connections')}`);
-  });
+  } catch (err) {
+    logger.error(err.message);
+    process.exit(1);
+  }
 
-  module.exports = app;
+  module.exports = fastify;
 })();
