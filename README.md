@@ -96,11 +96,11 @@ const meta = {
   params: ['name'],            // Query or body parameters
 };
 
-async function onStart({ req, res }) {
-  const { name } = req.query;
+async function onStart({ request, reply }) {
+  const { name } = request.query;
   const greeting = name ? `Hello, ${name}!` : 'Hello, World!';
 
-  return res.json({
+  return reply.send({
     message: greeting,
     timestamp: new Date().toISOString(),
     powered_by: 'Iwato Rest API'
