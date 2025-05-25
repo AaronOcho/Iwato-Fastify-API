@@ -1,8 +1,8 @@
 module.exports = {
-    name: 'Iwato Rest API',
+    name: 'OchoOcho21 Rest API',
     description: 'Integrated API solution for your modern application development needs. Fast, secure, and reliable access.',
     icon: '/image/icon.png',
-    author: 'ShawnDesu',
+    author: 'OchoOcho21',
     notification: [ 
         {
             title: 'New API Added',
